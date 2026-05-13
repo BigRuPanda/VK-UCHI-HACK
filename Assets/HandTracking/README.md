@@ -84,8 +84,6 @@ Assets/StreamingAssets/mediapipe/
 
 - Unity **2022.3 LTS** или **2023.x LTS**
 - Платформа сборки: **WebGL** (`File → Build Settings → WebGL → Switch Platform`)
-- Раздача через **HTTPS** (требуется `getUserMedia`). Chrome допускает `http://localhost` без HTTPS.
-- Протестировано в браузерах: **Chrome 112+**, **Edge 112+**
 - Пакет **TextMeshPro** (`Window → Package Manager → TextMeshPro`)
 - При использовании **нового Input System**: `Edit → Project Settings → Player → Active Input Handling` → `Input System Package` или `Both`.
 
@@ -653,25 +651,7 @@ public void OnPage3Opened()
 
 ---
 
-## 11. Устранение неполадок
-
-| Симптом | Вероятная причина | Решение |
-|---|---|---|
-| `getUserMedia not supported` | HTTP вместо HTTPS | Раздавать через HTTPS или использовать `localhost` |
-| Панель разрешения не исчезает | Браузер заблокировал запрос | Убедиться, что пользователь нажал «Разрешить» в браузере |
-| Руки не двигаются | Несовпадение имени GameObject | Переименовать корневой объект строго в `HandTrackingBridge` |
-| MediaPipe не загружается | Отсутствуют файлы в StreamingAssets | Проверить наличие всех 10 файлов в `StreamingAssets/mediapipe/` |
-| Снаряды не спавнятся | `targetCanvas` не назначен | Назначить `HandTrackingCanvas` в `ProjectileLauncher → targetCanvas` |
-| Радиус поимки ощущается неправильно | Несовпадение масштаба canvas | Убедиться, что `CatchZoneController → targetCanvas` совпадает с `ProjectileLauncher → targetCanvas` |
-| Превью камеры чёрное | Разрешение ещё не выдано | `WebcamPreview` стартует после `OnTrackingStartedEvent` — сначала нужно разрешение |
-| Превью зеркалируется неправильно | Настройка `mirrorHorizontal` | Переключить `WebcamPreview → mirrorHorizontal` |
-| Частицы не воспроизводятся | `enableParticles = false` или отсутствует префаб | Проверить Inspector `HandCatchParticles` |
-| Чёрный экран в WebGL | Несовпадение сжатия | Настроить сервер на отдачу `.br`/`.gz` или отключить сжатие в настройках сборки |
-| Высокая нагрузка CPU в браузере | Сложность модели MediaPipe | `modelComplexity: 0` уже установлен в jslib (lite-модель) |
-
----
-
-## 12. Архитектурная схема
+## 11. Архитектурная схема
 
 ```
 Браузер (JS)                          Unity (C#)

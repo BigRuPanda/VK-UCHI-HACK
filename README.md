@@ -9,6 +9,7 @@
   - [1. Модуль чтения](#1-Модуль-чтения)
   - [2. Модуль рисования](#2-Модуль-рисования)
   - [3. Модуль трекинга рук](#3-Модуль-трекинга-рук)
+- [Структура исходного проекта](#структура-исходного-проекта)
 - [Как запустить](#как-запустить)
 - [Стек технологий](#стек-технологий)
 
@@ -72,6 +73,85 @@
 > В нашем проекте лежит в [Assets/HandTracking](Assets/HandTracking) с собственным README.md
 
 Модуль для оффлайн трекинга рук через MediaPipe Hands WASM. Снаряды летят с эффектом "на тебя". Чтобы левая и правая руки на экране не путались, мы сделали умную сортировку рук по X-координате. 
+
+## Структура исходного проекта
+
+### `Assets/Audio/` — Аудио ресурсы
+Музыка и звуковые эффекты игры.
+
+### `Assets/Fonts/` — Шрифты
+Шрифты, используемые в UI игры.
+
+### `Assets/Resources/` — Общие ресурсы
+Ресурсы, загружаемые динамически через `Resources.Load()` во время игры.
+
+### `Assets/Scripts/` — Общие скрипты
+- [`GameTimeManager.cs`](Assets/Scripts/GameTimeManager.cs) — статический менеджер игрового времени: накапливает секунды, поддерживает паузу/сброс, форматирует в `ЧЧ:ММ:СС`
+- [`GameTimeUpdater.cs`](Assets/Scripts/GameTimeUpdater.cs) — `MonoBehaviour`-тикер для `GameTimeManager`, создаётся при старте и живёт через все сцены (`DontDestroyOnLoad`)
+- [`DisplayGameTime.cs`](Assets/Scripts/DisplayGameTime.cs) — UI-компонент финального экрана: отображает итоговое время прохождения
+- [`LoadingManager.cs`](Assets/Scripts/LoadingManager.cs) — экран загрузки: ждёт заданное время, затем загружает игровую сцену
+
+### `Assets/Scenes/` — Сцены игры
+
+**`FirstScene/`** — первая локация: чтение вслух + рисование моста
+- **`Scripts/`** — [`DisableWithAnimation.cs`](Assets/Scenes/FirstScene/Scripts/DisableWithAnimation.cs) (последовательность старта: скрытие панели → анимация героя → спецэффекты болота → закрытие книги), [`LoadNextScene.cs`](Assets/Scenes/FirstScene/Scripts/LoadNextScene.cs) (переход на следующую сцену через анимацию закрытия книги)
+- **`Animation/`** — анимационные клипы и контроллеры (герой, книга, фоновые объекты)
+- **`Pictures/`** — фоновые изображения и арт локации
+
+**`SecondScene/`** — вторая локация: чтение + рисование + ловля снарядов руками
+- **`Scripts/`** — [`SceneLoader.cs`](Assets/Scenes/SecondScene/Scripts/SceneLoader.cs) (утилита перехода между сценами по имени или индексу)
+- **`PirateSceneUnityPack/Scripts/`** — [`PirateSceneAutoAnimator.cs`](Assets/Scenes/SecondScene/PirateSceneUnityPack/Scripts/PirateSceneAutoAnimator.cs) (idle-анимация пиратской сцены: покачивание корабля, движение волн, облаков и птиц; intro с ease-out-back)
+- **`Animation/`** — анимационные клипы и контроллеры локации
+- **`Pictures/`** — фоновые изображения и арт локации
+
+**`LastScene/`** — финальный экран: статистика прохождения и поздравление
+- **`Scripts/`** — [`RotateObject.cs`](Assets/Scenes/LastScene/Scripts/RotateObject.cs) (вращение декоративных 3D-объектов), [`QuickRotateAndRestore.cs`](Assets/Scenes/LastScene/Scripts/QuickRotateAndRestore.cs) (анимация переворота объектов с возвратом)
+- **`Resources/`** — ресурсы, специфичные для финальной сцены
+
+**`MainHero/`** — ресурсы главного героя (спрайты, анимации), используемые во всех сценах
+
+### `Assets/ReadingModule/` — Модуль чтения
+Переиспользуемый модуль офлайн-распознавания речи. Содержит:
+- **`Scripts/`** — [`ReadingController.cs`](Assets/ReadingModule/Scripts/ReadingController.cs) (главный контроллер: спавн слов, проверка произношения, события), [`SpeechBridge.cs`](Assets/ReadingModule/Scripts/SpeechBridge.cs) (мост JS↔C#, получает слова от Vosk), [`WordToken.cs`](Assets/ReadingModule/Scripts/WordToken.cs) (анимации каждого слова: влёт, покачивание, успех/ошибка), [`MicrophonePermissionHandler.cs`](Assets/ReadingModule/Scripts/MicrophonePermissionHandler.cs) (UI-поток запроса разрешения микрофона), [`MicLevelIndicator.cs`](Assets/ReadingModule/Scripts/MicLevelIndicator.cs) (индикатор уровня громкости)
+- **`Plugins/`** — [`Microphone.cs`](Assets/ReadingModule/Plugins/Microphone.cs) (WebGL-шим для `UnityEngine.Microphone`), `MicrophonePlugin.jslib` (JS: `getUserMedia` + `AudioContext`), `VoskBridge.jslib` (JS: Vosk WASM → `SendMessage`)
+- **`Data/`** — `SentenceData.cs` (структура данных предложений для чтения)
+- **`Prefabs/`** — префаб `WordToken` с двухслойной структурой (корень для Layout Group + дочерний `WordVisual` для DOTween)
+- **`README.md`** — подробная документация и инструкция по интеграции
+
+### `Assets/DrawScanning/` — Модуль распознавания рисунков
+Переиспользуемый модуль сравнения рисунка с трафаретом через веб-камеру. Содержит:
+- **`Scripts/`** — [`DrawScanningChecker.cs`](Assets/DrawScanning/Scripts/DrawScanningChecker.cs) (главный MonoBehaviour: адаптивная бинаризация, flood fill, подсчёт схожести, события), `DrawScanningProgressBar.cs` (UI-полоска прогресса), `DrawScanningCameraPermissionUI.cs` (UI-панель запроса разрешения камеры)
+- **`README.md`** — подробная документация и инструкция по интеграции
+
+### `Assets/HandTracking/` — Модуль трекинга рук
+Переиспользуемый модуль мини-игры с трекингом рук через MediaPipe Hands WASM. Содержит:
+- **`Scripts/Core/`** — [`HandTrackingBridge.cs`](Assets/HandTracking/Scripts/Core/HandTrackingBridge.cs) (хаб JS↔C#: парсинг JSON, сглаживание позиций, умная сортировка рук по X), [`CameraPermissionManager.cs`](Assets/HandTracking/Scripts/Core/CameraPermissionManager.cs) (UI-поток разрешения камеры браузера), [`HandTrackingGameManager.cs`](Assets/HandTracking/Scripts/Core/HandTrackingGameManager.cs) (координатор-автомат состояний: Idle → Permission → Countdown → Playing → Finished)
+- **`Scripts/Gameplay/`** — [`ProjectileLauncher.cs`](Assets/HandTracking/Scripts/Gameplay/ProjectileLauncher.cs) (спавн снарядов, эффект «летит на тебя», пулинг), [`CatchZoneController.cs`](Assets/HandTracking/Scripts/Gameplay/CatchZoneController.cs) (определение поимки снаряда рукой в canvas-пространстве), [`ReticleMarker.cs`](Assets/HandTracking/Scripts/Gameplay/ReticleMarker.cs) (сужающийся маркер-прицел с анимацией цвета и пульсацией)
+- **`Scripts/Visualization/`** — [`HandVisualizer.cs`](Assets/HandTracking/Scripts/Visualization/HandVisualizer.cs) (спрайты рук, следующие за позицией из Bridge), [`WebcamPreview.cs`](Assets/HandTracking/Scripts/Visualization/WebcamPreview.cs) (превью веб-камеры в `RawImage`), [`HandCatchParticles.cs`](Assets/HandTracking/Scripts/Visualization/HandCatchParticles.cs) (опциональные частицы при поимке/промахе)
+- **`Plugins/`** — `mediapipe_hands.jslib` (JS-плагин: загружает MediaPipe WASM, открывает камеру, каждый кадр отправляет JSON с позициями рук через `SendMessage`)
+- **`Prefabs/`** — префабы снаряда и прицела
+- **`README.md`** — подробная документация и инструкция по интеграции
+
+### `Assets/StreamingAssets/` — WASM-модели и JS-воркеры
+Файлы, доступные браузеру напрямую (не упаковываются в WebGL-бандл):
+- **`vosk/`** — JS-воркеры Vosk: `vosk-browser.js`, `vosk-worker.js`
+- **`vosk-model-small-ru/`** — офлайн-модель распознавания русской речи (~50 MB)
+- **`mediapipe/`** — MediaPipe Hands WASM: JS-загрузчики, `hands_solution_wasm_bin.wasm`, `hands_solution_simd_wasm_bin.wasm`, `hand_landmark_lite.tflite`, `hand_landmark_full.tflite`
+
+### `Assets/WebGLTemplates/MagicBookLoadingOnly/` — HTML-шаблон сборки
+Кастомный HTML-шаблон WebGL-сборки с экраном загрузки в стиле волшебной книги.
+
+### `Assets/Plugins/Demigiant/DOTween/` — Библиотека анимаций
+DOTween — библиотека для плавных анимаций, используется в `ReadingModule` для анимации слов.
+
+### `Assets/Settings/` — Настройки Unity
+Профили сборки, настройки URP и Input System.
+
+### `Packages/` — Unity Package Manager
+Манифест зависимостей проекта (TextMeshPro, Input System и др.).
+
+### `ProjectSettings/` — Настройки проекта Unity
+Конфигурация Physics, Tags, Layers, Player Settings и других параметров Unity.
 
 ## Как запустить
 

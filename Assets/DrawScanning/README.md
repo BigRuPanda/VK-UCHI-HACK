@@ -122,17 +122,3 @@ float score = checker.CurrentScore;
 // Было ли рисование принято
 bool accepted = checker.IsAccepted;
 ```
-
----
-
-## Совместимость браузеров
-
-| Браузер | Камера | Примечание |
-|---|---|---|
-| Chrome 90+ | ✅ | Рекомендуется |
-| Edge 90+ | ✅ | |
-| Firefox 90+ | ✅ | |
-| Safari 15+ | ✅ | |
-| Mobile Chrome | ✅ | |
-
-**HTTPS обязателен** для доступа к камере во всех браузерах, кроме `localhost`.
