@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<!--
+  DrawScanning — HOG Pure JS (no dependencies)
+  ─────────────────────────────────────────────────────────────────────────────
+  Сравнивает HOG-дескрипторы эталона и рисунка без OpenCV.js.
+  Алгоритм (~150 строк чистого JS):
+    1. Resize → 128×96 через Canvas 2D API
+    2. Grayscale (luminance formula)
+    3. Gaussian blur 5×5 (убирает шум)
+    4. Sobel 3×3 → magnitude + angle per pixel
+    5. HOG: 8×8 cells, 9 bins (0°–180°), L2-Hys norm per 2×2 block
+    6. Score = cosine similarity между векторами эталона и фото
+
+  Открывать напрямую в браузере — сервер НЕ нужен. Никаких зависимостей.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DrawScanning — HOG Pure JS Demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0f0f1a; color: #e2e8f0;
+      padding: 20px; min-height: 100vh;
+    }
+    h1 { color: #34d399; font-size: 1.4rem; margin-bottom: 4px; }
+    .subtitle { color: #64748b; font-size: 0.82rem; margin-bottom: 18px; }
+
+    .card {
+      background: #16213e; border: 1px solid #1e293b;
+      border-radius: 10px; padding: 16px; margin-bottom: 18px;
+    }
+    .card h2 { font-size: 0.95rem; color: #34d399; margin-bottom: 12px; }
+
+    .file-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+    .file-btn {
+      padding: 7px 16px; border-radius: 7px; border: none;
+      cursor: pointer; font-size: 0.85rem; font-weight: 600; display: inline-block;
+    }
+    .file-btn:hover { opacity: 0.85; }
+    .btn-teal  { background: #0d9488; color: #fff; }
+    .btn-green { background: #059669; color: #fff; }
+
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 4px;
+      font-size: 0.68rem; font-weight: 700; margin-left: 6px; vertical-align: middle;
+    }
+    .badge-ok { background: #065f46; color: #6ee7b7; }
+    .badge-no { background: #7f1d1d; color: #fca5a5; }
+
+    .ref-steps { display: flex; gap: 12px; flex-wrap: wrap; }
+    .step { display: flex; flex-direction: column; gap: 3px; }
+    .step .lbl { font-size: 0.65rem; color: #475569; }
+    canvas { border-radius: 5px; border: 1px solid #1e293b; background: #000; display: block; }
+
+    .params-row {
+      display: flex; gap: 14px; flex-wrap: wrap; align-items: center;
+      padding: 12px 16px; background: #16213e;
+      border: 1px solid #1e293b; border-radius: 10px; margin-bottom: 18px;
+    }
+    .params-row label { font-size: 0.8rem; color: #94a3b8; }
+    .params-row input[type=range] { width: 110px; accent-color: #0d9488; }
+    .params-row span { font-size: 0.8rem; min-width: 36px; }
+    .params-row button {
+      padding: 6px 14px; background: #0d9488; color: #fff;
+      border: none; border-radius: 6px; cursor: pointer;
+      font-size: 0.85rem; font-weight: 600;
+    }
+    .params-row button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .params-row button:hover:not(:disabled) { opacity: 0.85; }
+
+    .hog-table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 0.78rem; }
+    .hog-table th {
+      font-size: 0.72rem; color: #64748b; font-weight: 600;
+      padding: 4px 8px; text-align: left; border-bottom: 1px solid #1e293b;
+    }
+    .hog-table td { padding: 3px 8px; vertical-align: middle; color: #94a3b8; }
+    .hog-table td:first-child { color: #34d399; font-weight: 600; }
+
+    .photo-section { margin-bottom: 28px; }
+    .photo-section h3 {
+      font-size: 0.9rem; color: #94a3b8;
+      margin-bottom: 10px; padding-bottom: 5px;
+      border-bottom: 1px solid #1e293b;
+    }
+    .photo-row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+    .photo-col {
+      display: flex; flex-direction: column; gap: 4px;
+      background: #16213e; border: 2px solid #1e293b;
+      border-radius: 8px; padding: 8px; min-width: 140px;
+    }
+    .photo-col.accepted { border-color: #059669; }
+    .photo-col .col-lbl { font-size: 0.65rem; color: #475569; text-align: center; }
+
+    .score-pill {
+      text-align: center; font-size: 0.8rem; font-weight: 700;
+      padding: 4px 0; border-radius: 5px; margin-top: 2px;
+    }
+    .score-pill.low  { background: #7f1d1d; color: #fca5a5; }
+    .score-pill.mid  { background: #78350f; color: #fde68a; }
+    .score-pill.high { background: #064e3b; color: #6ee7b7; }
+
+    #log {
+      font-family: monospace; font-size: 0.7rem; color: #475569;
+      max-height: 140px; overflow-y: auto;
+      background: #0f172a; border-radius: 6px; padding: 8px; margin-top: 16px;
+    }
+
+    .info-box {
+      background: #022c22; border: 1px solid #065f46;
+      border-radius: 8px; padding: 10px 14px;
+      font-size: 0.78rem; color: #6ee7b7; margin-bottom: 14px; line-height: 1.6;
+    }
+    .info-box code { background: #064e3b; padding: 1px 5px; border-radius: 3px; font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+
+<h1>🟢 DrawScanning — HOG Pure JS (no dependencies)</h1>
+<p class="subtitle">
+  Сравнивает HOG-дескрипторы без OpenCV.js. Score = cosine similarity.<br>
+  Открывать напрямую в браузере — сервер не нужен. Никаких зависимостей.
+</p>
+
+<div class="info-box">
+  <strong>Алгоритм (чистый JS, ~150 строк):</strong>
+  Resize → 128×96 →
+  Grayscale →
+  Gaussian blur 5×5 →
+  Sobel 3×3 (Gx, Gy) →
+  HOG: 8×8 cells, 9 bins, L2-norm per 2×2 block →
+  Cosine similarity.<br>
+  <strong>Зависимости:</strong> <code>нет</code> — только Canvas 2D API (встроен в браузер).
+  Подходит для production в Unity WebGL без загрузки OpenCV.js.
+</div>
+
+<div class="params-row">
+  <label>Accept threshold:</label>
+  <input type="range" id="acceptThr" min="0.1" max="0.99" step="0.01" value="0.55" />
+  <span id="valAccept">0.55</span>
+  <label style="margin-left:10px;">Blur sigma:</label>
+  <input type="range" id="blurSigma" min="0.5" max="3" step="0.1" value="1.0" />
+  <span id="valSigma">1.0</span>
+  <button id="btnRerun" disabled>▶ Пересчитать</button>
+</div>
+
+<!-- Reference -->
+<div class="card">
+  <h2>1. Эталон <span id="refBadge" class="badge badge-no">не загружен</span></h2>
+  <div class="ref-steps">
+    <div class="step"><div class="lbl">Оригинал (128×96)</div><canvas id="refOrig" width="128" height="96"></canvas></div>
+    <div class="step"><div class="lbl">Grayscale</div><canvas id="refGray" width="128" height="96"></canvas></div>
+    <div class="step"><div class="lbl">Sobel magnitude</div><canvas id="refSobel" width="128" height="96"></canvas></div>
+    <div class="step"><div class="lbl">HOG-визуализация</div><canvas id="refHogViz" width="128" height="96"></canvas></div>
+  </div>
+  <div class="file-row">
+    <label class="file-btn btn-teal">
+      📂 Загрузить эталон
+      <input type="file" id="fileRef" accept="image/*" style="display:none" />
+    </label>
+  </div>
+</div>
+
+<!-- Photos -->
+<div class="card">
+  <h2>2. Фото рисунков <span id="photosBadge" class="badge badge-no">не загружены</span></h2>
+  <div class="file-row">
+    <label class="file-btn btn-teal">
+      📂 Загрузить фото (можно несколько)
+      <input type="file" id="filePhotos" accept="image/*" multiple style="display:none" />
+    </label>
+    <button class="file-btn btn-green" id="btnCompare" disabled>⚡ Сравнить</button>
+  </div>
+  <div id="photoResults" style="margin-top:16px;"></div>
+</div>
+
+<!-- HOG config info -->
+<div class="card">
+  <h2>Параметры HOG (pure JS)</h2>
+  <table class="hog-table">
+    <thead>
+      <tr><th>Параметр</th><th>Значение</th><th>Описание</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>winSize</td><td>128 × 96</td><td>Размер окна (кратно cellSize)</td></tr>
+      <tr><td>cellSize</td><td>8 × 8</td><td>Ячейка гистограммы</td></tr>
+      <tr><td>blockSize</td><td>2 × 2 cells</td><td>Блок нормализации (16×16 px)</td></tr>
+      <tr><td>blockStride</td><td>1 cell</td><td>Шаг блока (50% перекрытие)</td></tr>
+      <tr><td>nbins</td><td>9</td><td>Бинов ориентации (0°–180°, unsigned)</td></tr>
+      <tr><td>Вектор</td><td>~1764 float</td><td>((128/8−1)×(96/8−1)) × 4 × 9</td></tr>
+      <tr><td>Нормализация</td><td>L2-Hys</td><td>L2-norm + clip(0.2) + renorm</td></tr>
+      <tr><td>Метрика</td><td>Cosine similarity</td><td>dot(A,B) / (|A|·|B|)</td></tr>
+      <tr><td>Зависимости</td><td>нет</td><td>Canvas 2D API только</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div id="log"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var HOG_W = 128, HOG_H = 96;
+  var CELL  = 8;    // cell size in pixels
+  var NBINS = 9;    // orientation bins (0–180°)
+  var BLOCK = 2;    // block = 2×2 cells
+
+  var refData   = null;  // { rgba, gray, hog }
+  var photoData = [];
+  var hasRef    = false;
+
+  // ── Logging ──────────────────────────────────────────────────────────────
+  var logEl = document.getElementById('log');
+  function log(msg) {
+    var d = document.createElement('div');
+    d.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
+    logEl.appendChild(d); logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  // ── Sliders ───────────────────────────────────────────────────────────────
+  document.getElementById('acceptThr').addEventListener('input', function () {
+    document.getElementById('valAccept').textContent = parseFloat(this.value).toFixed(2);
+  });
+  document.getElementById('blurSigma').addEventListener('input', function () {
+    document.getElementById('valSigma').textContent = parseFloat(this.value).toFixed(1);
+  });
+  document.getElementById('btnRerun').addEventListener('click', function () {
+    if (hasRef && photoData.length) runComparison();
+  });
+  document.getElementById('btnCompare').addEventListener('click', function () {
+    if (hasRef && photoData.length) runComparison();
+  });
+  function updateButtons() {
+    var ok = hasRef && photoData.length > 0;
+    document.getElementById('btnRerun').disabled   = !ok;
+    document.getElementById('btnCompare').disabled = !ok;
+  }
+
+  // ── File → ImageData (HOG_W × HOG_H) ─────────────────────────────────────
+  function fileToImageData(file, cb) {
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      var img = new Image();
+      img.onload = function () {
+        var c = document.createElement('canvas');
+        c.width = HOG_W; c.height = HOG_H;
+        var ctx = c.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0, HOG_W, HOG_H);
+        cb(ctx.getImageData(0, 0, HOG_W, HOG_H), c);
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // ── Grayscale (luminance) ─────────────────────────────────────────────────
+  // Returns Float32Array [0..255], length = W*H
+  function toGray(rgba) {
+    var n = HOG_W * HOG_H;
+    var g = new Float32Array(n);
+    for (var i = 0; i < n; i++) {
+      var r = rgba.data[i * 4];
+      var gv = rgba.data[i * 4 + 1];
+      var b = rgba.data[i * 4 + 2];
+      g[i] = 0.299 * r + 0.587 * gv + 0.114 * b;
+    }
+    return g;
+  }
+
+  // ── Gaussian kernel ───────────────────────────────────────────────────────
+  function makeGaussKernel(sigma) {
+    var r = Math.ceil(sigma * 3);
+    var size = 2 * r + 1;
+    var k = new Float32Array(size);
+    var sum = 0;
+    for (var i = 0; i < size; i++) {
+      var x = i - r;
+      k[i] = Math.exp(-(x * x) / (2 * sigma * sigma));
+      sum += k[i];
+    }
+    for (var j = 0; j < size; j++) k[j] /= sum;
+    return { k: k, r: r };
+  }
+
+  // ── Separable Gaussian blur ───────────────────────────────────────────────
+  function gaussBlur(gray, sigma) {
+    var W = HOG_W, H = HOG_H;
+    var gk = makeGaussKernel(sigma);
+    var k = gk.k, r = gk.r;
+    var tmp = new Float32Array(W * H);
+    var out = new Float32Array(W * H);
+
+    // Horizontal pass
+    for (var y = 0; y < H; y++) {
+      for (var x = 0; x < W; x++) {
+        var sum = 0;
+        for (var d = -r; d <= r; d++) {
+          var xi = Math.max(0, Math.min(W - 1, x + d));
+          sum += gray[y * W + xi] * k[d + r];
+        }
+        tmp[y * W + x] = sum;
+      }
+    }
+    // Vertical pass
+    for (var y2 = 0; y2 < H; y2++) {
+      for (var x2 = 0; x2 < W; x2++) {
+        var sum2 = 0;
+        for (var d2 = -r; d2 <= r; d2++) {
+          var yi = Math.max(0, Math.min(H - 1, y2 + d2));
+          sum2 += tmp[yi * W + x2] * k[d2 + r];
+        }
+        out[y2 * W + x2] = sum2;
+      }
+    }
+    return out;
+  }
+
+  // ── Sobel → magnitude + angle arrays ─────────────────────────────────────
+  // Returns { mag: Float32Array, ang: Float32Array } (ang in degrees 0–180)
+  function sobel(gray) {
+    var W = HOG_W, H = HOG_H;
+    var mag = new Float32Array(W * H);
+    var ang = new Float32Array(W * H);
+    for (var y = 1; y < H - 1; y++) {
+      for (var x = 1; x < W - 1; x++) {
+        var gx =
+          -gray[(y-1)*W+(x-1)] + gray[(y-1)*W+(x+1)]
+          -2*gray[y*W+(x-1)]   + 2*gray[y*W+(x+1)]
+          -gray[(y+1)*W+(x-1)] + gray[(y+1)*W+(x+1)];
+        var gy =
+          -gray[(y-1)*W+(x-1)] - 2*gray[(y-1)*W+x] - gray[(y-1)*W+(x+1)]
+          +gray[(y+1)*W+(x-1)] + 2*gray[(y+1)*W+x] + gray[(y+1)*W+(x+1)];
+        mag[y*W+x] = Math.sqrt(gx*gx + gy*gy);
+        var a = Math.atan2(Math.abs(gy), Math.abs(gx)) * 180 / Math.PI; // 0–90
+        // Map to 0–180 using sign of gy
+        if (gy < 0) a = 180 - a;
+        ang[y*W+x] = a;
+      }
+    }
+    return { mag: mag, ang: ang };
+  }
+
+  // ── HOG descriptor ────────────────────────────────────────────────────────
+  // Returns Float32Array (L2-Hys normalized)
+  function computeHOG(gray) {
+    var sigma = parseFloat(document.getElementById('blurSigma').value);
+    var blurred = gaussBlur(gray, sigma);
+    var sa = sobel(blurred);
+    var mag = sa.mag, ang = sa.ang;
+
+    var W = HOG_W, H = HOG_H;
+    var cellsX = W / CELL;  // 16
+    var cellsY = H / CELL;  // 12
+
+    // Build cell histograms: [cellsY][cellsX][NBINS]
+    var cells = new Float32Array(cellsY * cellsX * NBINS);
+    for (var y = 0; y < H; y++) {
+      for (var x = 0; x < W; x++) {
+        var cy = Math.floor(y / CELL);
+        var cx = Math.floor(x / CELL);
+        var m  = mag[y * W + x];
+        var a  = ang[y * W + x]; // 0–180
+        var binF = a / 20.0;     // 0–9
+        var bin0 = Math.floor(binF) % NBINS;
+        var bin1 = (bin0 + 1) % NBINS;
+        var frac = binF - Math.floor(binF);
+        var base = (cy * cellsX + cx) * NBINS;
+        cells[base + bin0] += m * (1 - frac);
+        cells[base + bin1] += m * frac;
+      }
+    }
+
+    // Build block descriptors with L2-Hys normalization
+    var blocksX = cellsX - BLOCK + 1;  // 15
+    var blocksY = cellsY - BLOCK + 1;  // 11
+    var descLen = blocksY * blocksX * BLOCK * BLOCK * NBINS;
+    var desc = new Float32Array(descLen);
+    var di = 0;
+
+    for (var by = 0; by < blocksY; by++) {
+      for (var bx = 0; bx < blocksX; bx++) {
+        // Collect 2×2 cells into block vector
+        var block = new Float32Array(BLOCK * BLOCK * NBINS);
+        var bi = 0;
+        for (var dy = 0; dy < BLOCK; dy++) {
+          for (var dx = 0; dx < BLOCK; dx++) {
+            var cyi = by + dy;
+            var cxi = bx + dx;
+            var base2 = (cyi * cellsX + cxi) * NBINS;
+            for (var n = 0; n < NBINS; n++) {
+              block[bi++] = cells[base2 + n];
+            }
+          }
+        }
+        // L2-Hys: L2-norm → clip 0.2 → renorm
+        var norm = 0;
+        for (var k = 0; k < block.length; k++) norm += block[k] * block[k];
+        norm = Math.sqrt(norm) + 1e-6;
+        for (var k2 = 0; k2 < block.length; k2++) {
+          block[k2] = Math.min(block[k2] / norm, 0.2);
+        }
+        var norm2 = 0;
+        for (var k3 = 0; k3 < block.length; k3++) norm2 += block[k3] * block[k3];
+        norm2 = Math.sqrt(norm2) + 1e-6;
+        for (var k4 = 0; k4 < block.length; k4++) {
+          desc[di++] = block[k4] / norm2;
+        }
+      }
+    }
+    return desc;
+  }
+
+  // ── Cosine similarity ─────────────────────────────────────────────────────
+  function cosineSim(a, b) {
+    var dot = 0, na = 0, nb = 0;
+    for (var i = 0; i < a.length; i++) {
+      dot += a[i] * b[i];
+      na  += a[i] * a[i];
+      nb  += b[i] * b[i];
+    }
+    if (na === 0 || nb === 0) return 0;
+    return dot / (Math.sqrt(na) * Math.sqrt(nb));
+  }
+
+  // ── Render grayscale to canvas ────────────────────────────────────────────
+  function renderGray(gray, canvasEl) {
+    var ctx = canvasEl.getContext('2d', { willReadFrequently: true });
+    var id  = ctx.createImageData(HOG_W, HOG_H);
+    for (var i = 0; i < HOG_W * HOG_H; i++) {
+      var v = Math.round(Math.max(0, Math.min(255, gray[i])));
+      id.data[i*4]   = v;
+      id.data[i*4+1] = v;
+      id.data[i*4+2] = v;
+      id.data[i*4+3] = 255;
+    }
+    ctx.putImageData(id, 0, 0);
+  }
+
+  // ── Render Sobel magnitude to canvas ─────────────────────────────────────
+  function renderSobel(gray, canvasEl) {
+    var sigma = parseFloat(document.getElementById('blurSigma').value);
+    var blurred = gaussBlur(gray, sigma);
+    var sa = sobel(blurred);
+    var mag = sa.mag;
+    // Find max for normalization
+    var maxM = 0;
+    for (var i = 0; i < mag.length; i++) if (mag[i] > maxM) maxM = mag[i];
+    if (maxM === 0) maxM = 1;
+    var ctx = canvasEl.getContext('2d', { willReadFrequently: true });
+    var id  = ctx.createImageData(HOG_W, HOG_H);
+    for (var j = 0; j < HOG_W * HOG_H; j++) {
+      var v = Math.round(mag[j] / maxM * 255);
+      id.data[j*4]   = v;
+      id.data[j*4+1] = v;
+      id.data[j*4+2] = v;
+      id.data[j*4+3] = 255;
+    }
+    ctx.putImageData(id, 0, 0);
+  }
+
+  // ── HOG visualization: dominant gradient per cell ─────────────────────────
+  function renderHogViz(gray, canvasEl) {
+    var sigma = parseFloat(document.getElementById('blurSigma').value);
+    var blurred = gaussBlur(gray, sigma);
+    var sa = sobel(blurred);
+    var mag = sa.mag, ang = sa.ang;
+
+    var ctx = canvasEl.getContext('2d');
+    ctx.fillStyle = '#141428';
+    ctx.fillRect(0, 0, HOG_W, HOG_H);
+
+    var cellsX = HOG_W / CELL;
+    var cellsY = HOG_H / CELL;
+
+    for (var cy = 0; cy < cellsY; cy++) {
+      for (var cx = 0; cx < cellsX; cx++) {
+        // Accumulate bins
+        var bins = new Float32Array(NBINS);
+        var totalMag = 0;
+        for (var py = 0; py < CELL; py++) {
+          for (var px = 0; px < CELL; px++) {
+            var iy = cy * CELL + py;
+            var ix = cx * CELL + px;
+            var m  = mag[iy * HOG_W + ix];
+            var a  = ang[iy * HOG_W + ix];
+            totalMag += m;
+            var binF = a / 20.0;
+            var bin0 = Math.floor(binF) % NBINS;
+            bins[bin0] += m;
+          }
+        }
+        if (totalMag < 50) continue;
+
+        // Draw top-3 bins as lines
+        var sorted = Array.from(bins).map(function(v,i){return{v:v,i:i};})
+                          .sort(function(a,b){return b.v-a.v;}).slice(0,3);
+        var maxBinVal = sorted[0].v;
+        if (maxBinVal === 0) continue;
+
+        sorted.forEach(function(entry) {
+          if (entry.v < maxBinVal * 0.3) return;
+          var lineAngle = (entry.i * 20 + 10) * Math.PI / 180;
+          var cx2 = cx * CELL + CELL / 2;
+          var cy2 = cy * CELL + CELL / 2;
+          var len = (entry.v / maxBinVal) * 3.5;
+          var dx = Math.cos(lineAngle) * len;
+          var dy = Math.sin(lineAngle) * len;
+          var alpha = Math.min(1, entry.v / maxBinVal);
+          ctx.strokeStyle = 'rgba(' + Math.round(alpha*100+155) + ',180,255,' + alpha.toFixed(2) + ')';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(cx2 - dx, cy2 - dy);
+          ctx.lineTo(cx2 + dx, cy2 + dy);
+          ctx.stroke();
+        });
+      }
+    }
+  }
+
+  // ── Process one image: gray + hog + render ────────────────────────────────
+  function processImage(rgba, origCanvas, grayCanvas, sobelCanvas, hogVizCanvas) {
+    var ctx = origCanvas.getContext('2d', { willReadFrequently: true });
+    ctx.putImageData(rgba, 0, 0);
+
+    var gray = toGray(rgba);
+    if (grayCanvas)    renderGray(gray, grayCanvas);
+    if (sobelCanvas)   renderSobel(gray, sobelCanvas);
+    if (hogVizCanvas)  renderHogViz(gray, hogVizCanvas);
+
+    var t0 = performance.now();
+    var hog = computeHOG(gray);
+    var dt = (performance.now() - t0).toFixed(1);
+    return { gray: gray, hog: hog, dt: dt };
+  }
+
+  // ── Reference file input ──────────────────────────────────────────────────
+  document.getElementById('fileRef').addEventListener('change', function () {
+    if (!this.files.length) return;
+    fileToImageData(this.files[0], function (rgba, origCanvas) {
+      var grayC  = document.getElementById('refGray');
+      var sobelC = document.getElementById('refSobel');
+      var hogC   = document.getElementById('refHogViz');
+      var origC  = document.getElementById('refOrig');
+      refData = processImage(rgba, origC, grayC, sobelC, hogC);
+      log('Ref HOG computed in ' + refData.dt + ' ms. Descriptor length: ' + refData.hog.length);
+      hasRef = true;
+      var badge = document.getElementById('refBadge');
+      badge.textContent = 'загружен ✓'; badge.className = 'badge badge-ok';
+      updateButtons();
+    });
+  });
+
+  // ── Photo files input ─────────────────────────────────────────────────────
+  document.getElementById('filePhotos').addEventListener('change', function () {
+    if (!this.files.length) return;
+    photoData = [];
+    var files = Array.prototype.slice.call(this.files);
+    var loaded = 0;
+    files.forEach(function (file, idx) {
+      fileToImageData(file, function (rgba) {
+        var gray = toGray(rgba);
+        var hog  = computeHOG(gray);
+        photoData[idx] = { name: file.name, rgba: rgba, gray: gray, hog: hog };
+        if (++loaded === files.length) {
+          log(loaded + ' photo(s) loaded.');
+          var badge = document.getElementById('photosBadge');
+          badge.textContent = loaded + ' фото'; badge.className = 'badge badge-ok';
+          updateButtons();
+          if (hasRef) runComparison();
+        }
+      });
+    });
+  });
+
+  // ── Main comparison ───────────────────────────────────────────────────────
+  function runComparison() {
+    var acceptThr = parseFloat(document.getElementById('acceptThr').value);
+    var results   = document.getElementById('photoResults');
+    results.innerHTML = '';
+
+    photoData.forEach(function (photo, photoIdx) {
+      if (!photo) return;
+
+      var section = document.createElement('div');
+      section.className = 'photo-section';
+      section.innerHTML = '<h3>📷 ' + escHtml(photo.name) + '</h3>';
+      var row = document.createElement('div');
+      row.className = 'photo-row';
+      section.appendChild(row);
+      results.appendChild(section);
+
+      // Original
+      var colOrig = makeCol('Оригинал');
+      var cOrig = makeCanvas();
+      colOrig.appendChild(cOrig);
+      row.appendChild(colOrig);
+      var ctx = cOrig.getContext('2d');
+      ctx.putImageData(photo.rgba, 0, 0);
+
+      // Grayscale
+      var colGray = makeCol('Grayscale');
+      var cGray = makeCanvas();
+      colGray.appendChild(cGray);
+      row.appendChild(colGray);
+      renderGray(photo.gray, cGray);
+
+      // Sobel
+      var colSobel = makeCol('Sobel magnitude');
+      var cSobel = makeCanvas();
+      colSobel.appendChild(cSobel);
+      row.appendChild(colSobel);
+      renderSobel(photo.gray, cSobel);
+
+      // HOG viz
+      var colViz = makeCol('HOG-визуализация');
+      var cViz = makeCanvas();
+      colViz.appendChild(cViz);
+      row.appendChild(colViz);
+      renderHogViz(photo.gray, cViz);
+
+      // Score
+      var score = cosineSim(refData.hog, photo.hog);
+      var colScore = document.createElement('div');
+      colScore.className = 'photo-col' + (score >= acceptThr ? ' accepted' : '');
+      var pillClass = score >= acceptThr ? 'high' : score >= acceptThr * 0.7 ? 'mid' : 'low';
+      var verdict   = score >= acceptThr ? '✅ ПРИНЯТО' : '❌ Не похоже';
+      colScore.innerHTML =
+        '<div class="col-lbl">HOG Score</div>' +
+        '<div class="score-pill ' + pillClass + '" style="font-size:1.4rem;padding:16px 0;">' +
+          (score * 100).toFixed(1) + '%' +
+        '</div>' +
+        '<div style="text-align:center;font-size:0.75rem;margin-top:4px;color:#94a3b8;">' + verdict + '</div>' +
+        '<div style="text-align:center;font-size:0.65rem;margin-top:4px;color:#475569;">threshold: ' +
+          (acceptThr * 100).toFixed(0) + '%</div>';
+      row.appendChild(colScore);
+
+      log('Photo ' + (photoIdx + 1) + ' "' + photo.name + '": HOG cosine=' + score.toFixed(4) +
+          (score >= acceptThr ? ' ✅ ACCEPTED' : ' ❌'));
+    });
+  }
+
+  function makeCol(label) {
+    var d = document.createElement('div');
+    d.className = 'photo-col';
+    d.innerHTML = '<div class="col-lbl">' + label + '</div>';
+    return d;
+  }
+  function makeCanvas() {
+    var c = document.createElement('canvas');
+    c.width = HOG_W; c.height = HOG_H;
+    return c;
+  }
+  function escHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+}());
+</script>
+</body>
+</html>

@@ -1,0 +1,250 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &6699585451366175404
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 4165081398834011282}
+  - component: {fileID: 7446039379092901929}
+  - component: {fileID: 2144426408128177490}
+  - component: {fileID: 1533278503583604853}
+  - component: {fileID: 7700967703448384943}
+  - component: {fileID: 668503030325211875}
+  - component: {fileID: 4984306953857807171}
+  - component: {fileID: 158684250337239475}
+  m_Layer: 0
+  m_Name: HandTrackingBridge
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &4165081398834011282
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6699585451366175404}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &7446039379092901929
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6699585451366175404}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 616a179ff6268954f929016ae8d36adb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HandTracking.Core.HandTrackingBridge
+  maxHands: 2
+  minDetectionConfidence: 0.8
+  minTrackingConfidence: 0.3
+  smoothingFactor: 0.05
+  editorMouseFallback: 1
+--- !u!114 &2144426408128177490
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6699585451366175404}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 871170d9ec113874a820bd968e8ba943, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HandTracking.Core.HandTrackingGameManager
+  permissionManager: {fileID: 1533278503583604853}
+  bridge: {fileID: 7446039379092901929}
+  handVisualizer: {fileID: 668503030325211875}
+  launcher: {fileID: 4984306953857807171}
+  catchZone: {fileID: 7700967703448384943}
+  particles: {fileID: 0}
+  rulesPanel: {fileID: 0}
+  readyButton: {fileID: 0}
+  countdownPanel: {fileID: 0}
+  countdownText: {fileID: 0}
+  progressBar: {fileID: 0}
+  catchesToWin: 10
+  maxMisses: 10000
+  autoStart: 1
+  countdownSeconds: 3
+  OnCatch:
+    m_PersistentCalls:
+      m_Calls: []
+  OnMiss:
+    m_PersistentCalls:
+      m_Calls: []
+  OnWin:
+    m_PersistentCalls:
+      m_Calls: []
+  OnLose:
+    m_PersistentCalls:
+      m_Calls: []
+  OnStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+--- !u!114 &1533278503583604853
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6699585451366175404}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dd96e796ebdd16e49b42e01acb0e7727, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HandTracking.Core.CameraPermissionManager
+  permissionPanel: {fileID: 0}
+  bridge: {fileID: 7446039379092901929}
+  requestingContainer: {fileID: 0}
+  allowButton: {fileID: 0}
+  spinnerObject: {fileID: 0}
+  deniedContainer: {fileID: 0}
+  deniedReasonText: {fileID: 0}
+  retryButton: {fileID: 0}
+  autoRequestOnStart: 1
+  maxAutoRetries: 0
+  OnGrantedEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  OnDeniedEvent:
+    m_PersistentCalls:
+      m_Calls: []
+--- !u!114 &7700967703448384943
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6699585451366175404}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9bef61de1898b5b4a9a50109fab09ef1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HandTracking.Gameplay.CatchZoneController
+  bridge: {fileID: 7446039379092901929}
+  launcher: {fileID: 4984306953857807171}
+  targetCanvas: {fileID: 0}
+  catchRadius: 90
+  requireHandVisible: 1
+  catchTargetProximity: 150
+  missFlashDuration: 0.25
+  missFlashColor: {r: 1, g: 0.1, b: 0.1, a: 0.35}
+  missFlashImage: {fileID: 0}
+  OnCatch:
+    m_PersistentCalls:
+      m_Calls: []
+  OnMiss:
+    m_PersistentCalls:
+      m_Calls: []
+--- !u!114 &668503030325211875
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6699585451366175404}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 95efc33a5ae02474f8be0fc561d9c806, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HandTracking.Visualization.HandVisualizer
+  bridge: {fileID: 7446039379092901929}
+  leftHandRect: {fileID: 0}
+  rightHandRect: {fileID: 0}
+  leftHandImage: {fileID: 0}
+  rightHandImage: {fileID: 0}
+  leftHandSprite: {fileID: 0}
+  rightHandSprite: {fileID: 0}
+  handScale: 1
+  visibleAlpha: 1
+  hiddenAlpha: 0
+  alphaFadeSpeed: 8
+  parentCanvas: {fileID: 0}
+--- !u!114 &4984306953857807171
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6699585451366175404}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2c13adc7ebea1b641b826e1579127d7b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HandTracking.Gameplay.ProjectileLauncher
+  targetCanvas: {fileID: 0}
+  projectilePrefab: {fileID: 8529081949369350381, guid: 3da3193a32ae01643991ff6cce2d1ecf, type: 3}
+  reticlePrefab: {fileID: 4484426986045640755, guid: bf34484562b6a224e82bba9cf48494f5, type: 3}
+  projectileContainer: {fileID: 0}
+  spawnSource: {fileID: 0}
+  leftZoneXMin: -800
+  leftZoneXMax: -150
+  rightZoneXMin: 150
+  rightZoneXMax: 800
+  zoneYMin: -400
+  zoneYMax: -150
+  spawnInterval: 2
+  maxActiveProjectiles: 3
+  travelDuration: 2
+  warningLeadTime: 1.5
+  arcHeight: 200
+  arcHorizontalBias: 0
+  startScale: 0.2
+  endScale: 1
+  scaleCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  projectileSprites: []
+--- !u!114 &158684250337239475
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6699585451366175404}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9268cde23bb8d9d469f3e336c017d430, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HandTracking.Visualization.WebcamPreview
+  previewImage: {fileID: 0}
+  bridge: {fileID: 7446039379092901929}
+  mirrorHorizontal: 1
+  autoStartWithTracking: 1

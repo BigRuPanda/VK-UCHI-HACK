@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<!--
+  DrawScanning — Live Camera Demo
+  ─────────────────────────────────────────────────────────────────────────────
+  Standalone test page for the full live-stream pipeline.
+  No Unity, no server needed — open directly in Chrome/Edge.
+
+  Fixed issues vs. v1:
+    • Race condition: DS_Init is async (loads reference image); DS_StartScanning
+      is now called only after OnScannerReady fires AND the user has clicked Allow.
+    • getUserMedia is triggered from the Allow button click (user gesture preserved).
+    • Added in-page camera permission panel matching the Unity in-game panel.
+
+  Usage:
+    1. Open this file directly in Chrome/Edge (double-click or drag to browser).
+    2. Load a reference PNG — or click "Use built-in bridge sample".
+    3. Click "Разрешить камеру" in the permission panel.
+    4. Hold your drawing up to the camera.
+    5. Adjust sliders to calibrate for your lighting.
+
+  Requires: ../Plugins/drawScanning.js (loaded via <script> tag below)
+-->
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DrawScanning — Live Camera Demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0f0f1a;
+      color: #e2e8f0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+      gap: 16px;
+      min-height: 100vh;
+    }
+
+    h1 { color: #a78bfa; font-size: 1.5rem; }
+    .subtitle { color: #64748b; font-size: 0.85rem; text-align: center; max-width: 700px; }
+
+    .card {
+      background: #16213e;
+      border: 1px solid #2d2d5e;
+      border-radius: 12px;
+      border-radius: 12px;
+      padding: 18px;
+      width: 100%;
+      max-width: 960px;
+    }
+    .card h2 { color: #a78bfa; font-size: 0.95rem; margin-bottom: 12px; }
+
+    .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+    .col { display: flex; flex-direction: column; gap: 6px; }
+
+    canvas {
+      border-radius: 8px;
+      border: 2px solid #2d2d5e;
+      background: #000;
+      display: block;
+    }
+    canvas.accepted-glow { border-color: #10b981; box-shadow: 0 0 16px #10b98166; }
+
+    .lbl { font-size: 0.72rem; color: #94a3b8; }
+
+    button, .fbtn {
+      padding: 8px 18px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      transition: opacity 0.15s;
+      display: inline-block;
+    }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    button:hover:not(:disabled), .fbtn:hover { opacity: 0.85; }
+    .bp { background: #7c3aed; color: #fff; }
+    .bs { background: #059669; color: #fff; }
+    .bd { background: #dc2626; color: #fff; }
+    .bn { background: #374151; color: #eee; }
+
+    .controls { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; align-items: center; }
+
+    /* Score bar */
+    #scoreWrap {
+      width: 100%;
+      height: 32px;
+      background: #0f0f23;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid #2d2d5e;
+      margin-top: 10px;
+    }
+    #scoreBar {
+      height: 100%;
+      width: 0%;
+      border-radius: 16px;
+      background: #dc2626;
+      transition: width 0.2s ease, background 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding-right: 10px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: #fff;
+      min-width: 44px;
+    }
+
+    #verdict {
+      margin-top: 10px;
+      font-size: 1.1rem;
+      font-weight: 700;
+      text-align: center;
+      min-height: 1.4em;
+      transition: color 0.3s;
+    }
+    #verdict.accepted { color: #6ee7b7; }
+    #verdict.scanning { color: #a78bfa; }
+    #verdict.idle     { color: #64748b; }
+
+    .param-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+    .param-row label { font-size: 0.82rem; color: #aaa; min-width: 160px; }
+    input[type=range] { width: 150px; accent-color: #7c3aed; }
+    .param-row span { font-size: 0.82rem; min-width: 40px; }
+
+    #statusBar {
+      background: #1e1b4b;
+      border: 1px solid #4338ca;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 0.82rem;
+      color: #c7d2fe;
+      width: 100%;
+      max-width: 960px;
+    }
+
+    #log {
+      font-family: monospace;
+      font-size: 0.72rem;
+      color: #6b7280;
+      max-height: 120px;
+      overflow-y: auto;
+      background: #0f0f23;
+      border-radius: 6px;
+      padding: 8px;
+      margin-top: 8px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+    .badge-ok { background: #065f46; color: #6ee7b7; }
+    .badge-no { background: #7f1d1d; color: #fca5a5; }
+
+    .hint-box {
+      background: #1e1b4b;
+      border: 1px solid #4338ca;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.8rem;
+      color: #c7d2fe;
+      margin-top: 10px;
+      line-height: 1.5;
+    }
+
+    /* Accepted overlay on live canvas */
+    .canvas-wrap { position: relative; display: inline-block; }
+    #acceptedOverlay {
+      display: none;
+      position: absolute;
+      inset: 0;
+      background: rgba(16, 185, 129, 0.25);
+      border-radius: 8px;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.5rem;
+      pointer-events: none;
+    }
+    #acceptedOverlay.show { display: flex; }
+  </style>
+</head>
+<body>
+
+<h1>📷 DrawScanning — Live Camera Demo</h1>
+<p class="subtitle">
+  Real-time drawing recognition from webcam stream.
+  Load a reference image, start the camera, and hold your drawing up to it.
+</p>
+
+<div id="statusBar">⏳ Status: Idle — load a reference image and click <strong>Start Camera</strong>.</div>
+
+<!-- Step 1: Reference image -->
+<div class="card">
+  <h2>1. Reference Image <span id="refBadge" class="badge badge-no">not loaded</span></h2>
+  <div class="row">
+    <div class="col">
+      <div class="lbl">Original</div>
+      <canvas id="canvasRef" width="200" height="200"></canvas>
+    </div>
+    <div class="col">
+      <div class="lbl">Processed (pipeline preview)</div>
+      <canvas id="canvasRefProc" width="200" height="200"></canvas>
+    </div>
+  </div>
+  <div class="controls">
+    <label class="fbtn bp">
+      📂 Load Reference PNG
+      <input type="file" id="fileRef" accept="image/*" style="display:none" />
+    </label>
+    <button class="bn" id="btnSample">Use built-in bridge sample</button>
+  </div>
+  <div class="hint-box">
+    💡 Reference should be a <strong>black drawing on white background</strong>.
+    Recommended size: 256×256 px. The module rescales automatically.
+  </div>
+</div>
+
+<!-- Step 2: Live camera -->
+<div class="card">
+  <h2>2. Live Camera Feed</h2>
+  <div class="row">
+    <div class="col">
+      <div class="lbl">Live feed (320×240)</div>
+      <div class="canvas-wrap">
+        <canvas id="canvasLive" width="320" height="240"></canvas>
+        <div id="acceptedOverlay">✅</div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="lbl">Processed frame (256×256)</div>
+      <canvas id="canvasProc" width="256" height="256"></canvas>
+    </div>
+    <div class="col">
+      <div class="lbl">Reference (normalized)</div>
+      <canvas id="canvasRefNorm" width="256" height="256"></canvas>
+    </div>
+  </div>
+  <div class="controls">
+    <button class="bs" id="btnStart" disabled>▶ Start Camera</button>
+    <button class="bd" id="btnStop" disabled>■ Stop Camera</button>
+  </div>
+  <div class="hint-box">
+    💡 Allow camera access when the browser asks. Use <strong>rear camera</strong> on mobile
+    for better results. Make sure the drawing is well-lit and fills most of the frame.
+  </div>
+</div>
+
+<!-- Step 3: Score & calibration -->
+<div class="card">
+  <h2>3. Similarity Score</h2>
+
+  <div class="param-row">
+    <label>Accept threshold:</label>
+    <input type="range" id="sliderAccept" min="0.1" max="1.0" step="0.01" value="0.55" />
+    <span id="valAccept">0.55</span>
+  </div>
+  <div class="param-row">
+    <label>Adaptive block size:</label>
+    <input type="range" id="sliderBlock" min="3" max="101" step="2" value="45" />
+    <span id="valBlock">45</span>
+  </div>
+  <div class="param-row">
+    <label>Adaptive C:</label>
+    <input type="range" id="sliderC" min="0" max="30" step="1" value="7" />
+    <span id="valC">7</span>
+  </div>
+  <div class="param-row">
+    <label>Hu weight (0=EdgeIoU, 1=Hu):</label>
+    <input type="range" id="sliderHu" min="0" max="1" step="0.05" value="0.5" />
+    <span id="valHu">0.50</span>
+  </div>
+  <div class="param-row">
+    <label>Top-N contours:</label>
+    <input type="range" id="sliderTopN" min="1" max="15" step="1" value="3" />
+    <span id="valTopN">3</span>
+  </div>
+
+  <div id="scoreWrap"><div id="scoreBar">0%</div></div>
+  <div id="verdict" class="idle">Load a reference image and start the camera.</div>
+</div>
+
+<!-- Log -->
+<div class="card">
+  <h2>4. Debug Log</h2>
+  <div id="log"></div>
+</div>
+
+<!--
+  Load drawScanning.js — provides DS_Init, DS_StartScanning, DS_StopScanning,
+  DS_SetThresholds, DS_GetPreviewPixels.
+  Path is relative to this HTML file inside Tests/.
+-->
+<script src="../Plugins/drawScanning.js"></script>
+
+<script>
+(function () {
+  'use strict';
+
+  // ── DOM refs ────────────────────────────────────────────────────────────
+  var canvasRef      = document.getElementById('canvasRef');
+  var canvasRefProc  = document.getElementById('canvasRefProc');
+  var canvasLive     = document.getElementById('canvasLive');
+  var canvasProc     = document.getElementById('canvasProc');
+  var canvasRefNorm  = document.getElementById('canvasRefNorm');
+  var ctxRef         = canvasRef.getContext('2d',     { willReadFrequently: true });
+  var ctxRefProc     = canvasRefProc.getContext('2d', { willReadFrequently: true });
+  var ctxLive        = canvasLive.getContext('2d',    { willReadFrequently: true });
+  var ctxProc        = canvasProc.getContext('2d',    { willReadFrequently: true });
+  var ctxRefNorm     = canvasRefNorm.getContext('2d', { willReadFrequently: true });
+
+  var btnStart       = document.getElementById('btnStart');
+  var btnStop        = document.getElementById('btnStop');
+  var btnSample      = document.getElementById('btnSample');
+  var scoreBar       = document.getElementById('scoreBar');
+  var verdict        = document.getElementById('verdict');
+  var statusBar      = document.getElementById('statusBar');
+  var refBadge       = document.getElementById('refBadge');
+  var acceptedOverlay= document.getElementById('acceptedOverlay');
+  var logEl          = document.getElementById('log');
+
+  var sliderAccept   = document.getElementById('sliderAccept');
+  var sliderBlock    = document.getElementById('sliderBlock');
+  var sliderC        = document.getElementById('sliderC');
+  var sliderHu       = document.getElementById('sliderHu');
+  var sliderTopN     = document.getElementById('sliderTopN');
+  var valAccept      = document.getElementById('valAccept');
+  var valBlock       = document.getElementById('valBlock');
+  var valC           = document.getElementById('valC');
+  var valHu          = document.getElementById('valHu');
+  var valTopN        = document.getElementById('valTopN');
+
+  // ── State ───────────────────────────────────────────────────────────────
+  var hasRef         = false;
+  var refBase64      = null;
+  var isScanning     = false;
+  var isAccepted     = false;
+  var previewRafId   = null;
+
+  // ── Logging ─────────────────────────────────────────────────────────────
+  function log(msg) {
+    var line = document.createElement('div');
+    line.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function setStatus(msg) {
+    statusBar.innerHTML = msg;
+  }
+
+  // ── Stub SendMessage so drawScanning.js can call back into this page ────
+  // In Unity WebGL, SendMessage(goName, method, value) routes to C#.
+  // Here we intercept it to update the HTML UI instead.
+  window.SendMessage = function (goName, method, value) {
+    if (method === 'JS_OnSimilarityUpdate') {
+      onSimilarityUpdate(parseFloat(value));
+    } else if (method === 'JS_OnScannerReady') {
+      log('Scanner ready.');
+      setStatus('✅ Scanner ready — hold your drawing up to the camera.');
+    } else if (method === 'JS_OnCameraError') {
+      log('Camera error: ' + value);
+      setStatus('❌ Camera error: ' + value + '. Check browser permissions.');
+      onStop();
+    } else if (method === 'JS_OnHint') {
+      log('Hint: ' + value);
+      if (value === 'show_drawing')  setStatus('💡 Hint: Show your drawing to the camera!');
+      if (value === 'rotate_paper')  setStatus('💡 Hint: Try rotating the paper slightly.');
+    }
+  };
+
+  // ── Score update ─────────────────────────────────────────────────────────
+  function onSimilarityUpdate(score) {
+    score = Math.max(0, Math.min(1, score));
+    var pct = Math.round(score * 100);
+    scoreBar.style.width = pct + '%';
+    scoreBar.textContent = pct + '%';
+
+    var acceptThr = parseFloat(sliderAccept.value);
+    var midThr = 0.40;
+    if (score < midThr) {
+      scoreBar.style.background = lerpColor('#dc2626', '#d97706', score / midThr);
+    } else {
+      scoreBar.style.background = lerpColor('#d97706', '#10b981',
+        Math.min(1, (score - midThr) / Math.max(0.01, acceptThr - midThr)));
+    }
+
+    if (!isAccepted && score >= acceptThr) {
+      isAccepted = true;
+      verdict.textContent = '✅ ACCEPTED! Score: ' + pct + '%';
+      verdict.className = 'accepted';
+      acceptedOverlay.classList.add('show');
+      canvasLive.classList.add('accepted-glow');
+      setStatus('🎉 Drawing accepted! Score: ' + pct + '%');
+      log('Drawing accepted at score ' + score.toFixed(4));
+    } else if (!isAccepted) {
+      verdict.textContent = 'Scanning… ' + pct + '% (need ' +
+        Math.round(acceptThr * 100) + '%)';
+      verdict.className = 'scanning';
+    }
+
+    // Draw live preview from DS.previewPixels onto canvasLive
+    drawLivePreview();
+
+    // Draw processed frame (binarized silhouette) onto canvasProc
+    drawProcessedFrame();
+  }
+
+  // ── Draw live preview from DS.previewPixels ──────────────────────────────
+  function drawLivePreview() {
+    if (typeof DS_GetPreviewPixels !== 'function') return;
+    var pixels = DS_GetPreviewPixels();
+    if (!pixels) return;
+
+    // DS.previewW = 320, DS.previewH = 240
+    var W = 320, H = 240;
+    var imgData = ctxLive.createImageData(W, H);
+    imgData.data.set(pixels.subarray(0, W * H * 4));
+    ctxLive.putImageData(imgData, 0, 0);
+  }
+
+  // ── Draw processed (binarized) frame from DS internals ──────────────────
+  // We expose a helper in drawScanning.js via DS_GetLastProcessedFrame (optional).
+  // If not available, we skip this canvas.
+  function drawProcessedFrame() {
+    if (typeof DS_GetLastBinary !== 'function') return;
+    var binary = DS_GetLastBinary(); // Uint8Array 256*256
+    if (!binary) return;
+    var W = 256, H = 256;
+    var imgData = ctxProc.createImageData(W, H);
+    for (var i = 0; i < W * H; i++) {
+      var v = binary[i] > 0 ? 255 : 0;
+      imgData.data[i * 4]     = v;
+      imgData.data[i * 4 + 1] = v;
+      imgData.data[i * 4 + 2] = v;
+      imgData.data[i * 4 + 3] = 255;
+    }
+    ctxProc.putImageData(imgData, 0, 0);
+  }
+
+  // ── Reference image loading ──────────────────────────────────────────────
+  function setReference(dataURL) {
+    var img = new Image();
+    img.onload = function () {
+      // Draw original to canvasRef
+      ctxRef.clearRect(0, 0, 200, 200);
+      ctxRef.drawImage(img, 0, 0, 200, 200);
+
+      // Store base64 for DS_Init
+      var tmp = document.createElement('canvas');
+      tmp.width = 256; tmp.height = 256;
+      var tmpCtx = tmp.getContext('2d');
+      tmpCtx.drawImage(img, 0, 0, 256, 256);
+      refBase64 = tmp.toDataURL('image/png').replace(/^data:image\/png;base64,/, '');
+
+      hasRef = true;
+      refBadge.textContent = 'loaded ✓';
+      refBadge.className = 'badge badge-ok';
+      btnStart.disabled = false;
+      log('Reference image loaded (' + img.width + '×' + img.height + ').');
+      setStatus('✅ Reference loaded — click <strong>Start Camera</strong>.');
+    };
+    img.src = dataURL;
+  }
+
+  // ── Start / Stop ─────────────────────────────────────────────────────────
+  function onStart() {
+    if (!hasRef || isScanning) return;
+    isScanning = true;
+    isAccepted = false;
+    acceptedOverlay.classList.remove('show');
+    canvasLive.classList.remove('accepted-glow');
+    verdict.textContent = 'Starting camera…';
+    verdict.className = 'scanning';
+    btnStart.disabled = true;
+    btnStop.disabled = false;
+    setStatus('⏳ Opening camera…');
+
+    var acceptThr = parseFloat(sliderAccept.value);
+    var blockSize = parseInt(sliderBlock.value);
+    var adaptC    = parseInt(sliderC.value);
+    var huW       = parseFloat(sliderHu.value);
+    var topN      = parseInt(sliderTopN.value);
+
+    // Initialise the scanner (first call only; subsequent calls reuse state)
+    if (typeof DS_Init === 'function') {
+      DS_Init(refBase64, 256, 256, 'DrawScanningChecker',
+              acceptThr, blockSize, adaptC, huW, topN);
+    } else {
+      log('ERROR: drawScanning.js not loaded. Check the <script> path.');
+      setStatus('❌ drawScanning.js not found. Check the script path in live_demo.html.');
+      onStop();
+      return;
+    }
+
+    if (typeof DS_StartScanning === 'function') {
+      DS_StartScanning();
+    }
+
+    log('Scanner started (acceptThr=' + acceptThr + ', block=' + blockSize +
+        ', C=' + adaptC + ', huW=' + huW + ', topN=' + topN + ').');
+  }
+
+  function onStop() {
+    if (!isScanning) return;
+    isScanning = false;
+    if (typeof DS_StopScanning === 'function') DS_StopScanning();
+    btnStart.disabled = !hasRef;
+    btnStop.disabled = true;
+    verdict.textContent = 'Camera stopped.';
+    verdict.className = 'idle';
+    setStatus('⏹ Camera stopped. Click <strong>Start Camera</strong> to try again.');
+    log('Scanner stopped.');
+  }
+
+  // ── Slider wiring ────────────────────────────────────────────────────────
+  sliderAccept.addEventListener('input', function () {
+    valAccept.textContent = parseFloat(sliderAccept.value).toFixed(2);
+    if (isScanning) applyThresholds();
+    // Reset accepted state when threshold changes
+    if (isAccepted) {
+      isAccepted = false;
+      acceptedOverlay.classList.remove('show');
+      canvasLive.classList.remove('accepted-glow');
+      if (typeof DS_ResetAccepted === 'function') DS_ResetAccepted();
+    }
+  });
+  sliderBlock.addEventListener('input', function () {
+    valBlock.textContent = sliderBlock.value;
+    if (isScanning) applyThresholds();
+  });
+  sliderC.addEventListener('input', function () {
+    valC.textContent = sliderC.value;
+    if (isScanning) applyThresholds();
+  });
+  sliderHu.addEventListener('input', function () {
+    valHu.textContent = parseFloat(sliderHu.value).toFixed(2);
+    if (isScanning) applyThresholds();
+  });
+  sliderTopN.addEventListener('input', function () {
+    valTopN.textContent = sliderTopN.value;
+    if (isScanning) applyThresholds();
+  });
+
+  function applyThresholds() {
+    if (typeof DS_SetThresholds === 'function') {
+      DS_SetThresholds(
+        parseFloat(sliderAccept.value),
+        parseInt(sliderBlock.value),
+        parseInt(sliderC.value),
+        parseFloat(sliderHu.value),
+        parseInt(sliderTopN.value)
+      );
+    }
+  }
+
+  // ── Button wiring ────────────────────────────────────────────────────────
+  btnStart.addEventListener('click', onStart);
+  btnStop.addEventListener('click', onStop);
+
+  document.getElementById('fileRef').addEventListener('change', function () {
+    if (!this.files.length) return;
+    var reader = new FileReader();
+    reader.onload = function (e) { setReference(e.target.result); };
+    reader.readAsDataURL(this.files[0]);
+  });
+
+  btnSample.addEventListener('click', function () {
+    // Draw a simple bridge shape as the reference
+    var tmp = document.createElement('canvas');
+    tmp.width = 256; tmp.height = 256;
+    var ctx = tmp.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, 256, 256);
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 8;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    // Road
+    ctx.moveTo(20, 180); ctx.lineTo(236, 180);
+    // Towers
+    ctx.moveTo(60, 180);  ctx.lineTo(60, 120);
+    ctx.moveTo(196, 180); ctx.lineTo(196, 120);
+    // Arch
+    ctx.moveTo(60, 120);
+    ctx.bezierCurveTo(60, 60, 196, 60, 196, 120);
+    // Cables
+    for (var x = 80; x <= 176; x += 24) {
+      ctx.moveTo(128, 72);
+      ctx.lineTo(x, 180);
+    }
+    ctx.stroke();
+    setReference(tmp.toDataURL('image/png'));
+    log('Built-in bridge sample loaded as reference.');
+  });
+
+  // ── Colour helper ────────────────────────────────────────────────────────
+  function lerpColor(hex1, hex2, t) {
+    t = Math.max(0, Math.min(1, t));
+    var r1 = parseInt(hex1.slice(1, 3), 16);
+    var g1 = parseInt(hex1.slice(3, 5), 16);
+    var b1 = parseInt(hex1.slice(5, 7), 16);
+    var r2 = parseInt(hex2.slice(1, 3), 16);
+    var g2 = parseInt(hex2.slice(3, 5), 16);
+    var b2 = parseInt(hex2.slice(5, 7), 16);
+    return 'rgb(' +
+      Math.round(r1 + (r2 - r1) * t) + ',' +
+      Math.round(g1 + (g2 - g1) * t) + ',' +
+      Math.round(b1 + (b2 - b1) * t) + ')';
+  }
+
+  log('Page ready. Load a reference image and click Start Camera.');
+  setStatus('⏳ Idle — load a reference image to begin.');
+
+}());
+</script>
+</body>
+</html>

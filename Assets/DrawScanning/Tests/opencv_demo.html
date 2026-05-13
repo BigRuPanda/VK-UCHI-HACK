@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<!--
+  DrawScanning — OpenCV.js Canny Preset Comparison
+  ──────────────────────────────────────────────────
+  Сравнивает Canny-маски эталона и рисунка напрямую (IoU краёв).
+  Никаких контуров — только Canny edges.
+
+  Открывать напрямую в браузере — сервер НЕ нужен.
+  OpenCV.js загружается с CDN (~8 MB).
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DrawScanning — Canny Preset Comparison</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0f0f1a; color: #e2e8f0;
+      padding: 20px; min-height: 100vh;
+    }
+    h1 { color: #a78bfa; font-size: 1.4rem; margin-bottom: 4px; }
+    .subtitle { color: #64748b; font-size: 0.82rem; margin-bottom: 18px; }
+
+    #status {
+      background: #1e1b4b; border: 1px solid #4338ca;
+      border-radius: 8px; padding: 10px 16px;
+      margin-bottom: 18px; font-size: 0.88rem; color: #c7d2fe;
+    }
+    #status.ready { background: #064e3b; border-color: #059669; color: #6ee7b7; }
+    #status.error { background: #7f1d1d; border-color: #dc2626; color: #fca5a5; }
+
+    .card {
+      background: #16213e; border: 1px solid #1e293b;
+      border-radius: 10px; padding: 16px; margin-bottom: 18px;
+    }
+    .card h2 { font-size: 0.95rem; color: #a78bfa; margin-bottom: 12px; }
+
+    .file-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+    .file-btn {
+      padding: 7px 16px; border-radius: 7px; border: none;
+      cursor: pointer; font-size: 0.85rem; font-weight: 600; display: inline-block;
+    }
+    .file-btn:hover { opacity: 0.85; }
+    .btn-purple { background: #7c3aed; color: #fff; }
+    .btn-green  { background: #059669; color: #fff; }
+
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 4px;
+      font-size: 0.68rem; font-weight: 700; margin-left: 6px; vertical-align: middle;
+    }
+    .badge-ok { background: #065f46; color: #6ee7b7; }
+    .badge-no { background: #7f1d1d; color: #fca5a5; }
+
+    /* Reference steps */
+    .ref-steps { display: flex; gap: 12px; flex-wrap: wrap; }
+    .step { display: flex; flex-direction: column; gap: 3px; }
+    .step .lbl { font-size: 0.65rem; color: #475569; }
+    canvas { border-radius: 5px; border: 1px solid #1e293b; background: #000; display: block; }
+
+    /* Params */
+    .params-row {
+      display: flex; gap: 14px; flex-wrap: wrap; align-items: center;
+      padding: 12px 16px; background: #16213e;
+      border: 1px solid #1e293b; border-radius: 10px; margin-bottom: 18px;
+    }
+    .params-row label { font-size: 0.8rem; color: #94a3b8; }
+    .params-row input[type=range] { width: 110px; accent-color: #7c3aed; }
+    .params-row span { font-size: 0.8rem; min-width: 32px; }
+    .params-row button {
+      padding: 6px 14px; background: #7c3aed; color: #fff;
+      border: none; border-radius: 6px; cursor: pointer;
+      font-size: 0.85rem; font-weight: 600;
+    }
+    .params-row button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .params-row button:hover:not(:disabled) { opacity: 0.85; }
+
+    /* Preset legend */
+    .preset-table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+    .preset-table th {
+      font-size: 0.72rem; color: #64748b; font-weight: 600;
+      padding: 4px 8px; text-align: left; border-bottom: 1px solid #1e293b;
+    }
+    .preset-table td { padding: 3px 8px; font-size: 0.78rem; vertical-align: middle; }
+    .preset-table tr:hover td { background: #1e293b; }
+    .preset-tag {
+      display: inline-block; padding: 2px 7px; border-radius: 4px;
+      font-size: 0.68rem; font-weight: 700; color: #fff;
+    }
+
+    /* Photo section */
+    .photo-section { margin-bottom: 28px; }
+    .photo-section h3 {
+      font-size: 0.9rem; color: #94a3b8;
+      margin-bottom: 10px; padding-bottom: 5px;
+      border-bottom: 1px solid #1e293b;
+    }
+
+    /* Preset columns */
+    .preset-row {
+      display: flex; gap: 10px; flex-wrap: nowrap;
+      overflow-x: auto; padding-bottom: 6px;
+    }
+    .preset-col {
+      flex: 0 0 auto;
+      display: flex; flex-direction: column; gap: 4px;
+      background: #16213e; border: 2px solid #1e293b;
+      border-radius: 8px; padding: 8px; min-width: 160px;
+    }
+    .preset-col.best { border-color: #059669; }
+    .preset-col .preset-name { font-size: 0.7rem; font-weight: 700; color: #a78bfa; text-align: center; }
+    .preset-col .preset-params { font-size: 0.62rem; color: #475569; text-align: center; }
+    .preset-col canvas { width: 150px; height: 112px; }
+    .preset-col .score-pill {
+      text-align: center; font-size: 0.75rem; font-weight: 700;
+      padding: 3px 0; border-radius: 5px; margin-top: 2px;
+    }
+    .score-pill.low  { background: #7f1d1d; color: #fca5a5; }
+    .score-pill.mid  { background: #78350f; color: #fde68a; }
+    .score-pill.high { background: #064e3b; color: #6ee7b7; }
+
+    #log {
+      font-family: monospace; font-size: 0.7rem; color: #475569;
+      max-height: 120px; overflow-y: auto;
+      background: #0f172a; border-radius: 6px; padding: 8px; margin-top: 16px;
+    }
+    .spinner {
+      display: inline-block; width: 12px; height: 12px;
+      border: 2px solid #4338ca; border-top-color: #a78bfa;
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+      vertical-align: middle; margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<h1>🔬 DrawScanning — Canny Preset Comparison</h1>
+<p class="subtitle">
+  Загрузи эталон и фото рисунков. Для каждого фото — 5 пресетов Canny рядом.<br>
+  Score = IoU краёв (пересечение / объединение белых пикселей Canny-масок).
+</p>
+
+<div id="status"><span class="spinner"></span>Загрузка OpenCV.js (~8 MB)…</div>
+
+<div class="params-row">
+  <label>Accept threshold:</label>
+  <input type="range" id="acceptThr" min="0.01" max="0.5" step="0.005" value="0.08" />
+  <span id="valAccept">0.08</span>
+  <button id="btnRerun" disabled>▶ Пересчитать</button>
+</div>
+
+<!-- Reference -->
+<div class="card">
+  <h2>1. Эталон <span id="refBadge" class="badge badge-no">не загружен</span></h2>
+  <div class="ref-steps">
+    <div class="step"><div class="lbl">Оригинал</div><canvas id="refOrig" width="200" height="150"></canvas></div>
+    <div class="step"><div class="lbl">Canny (пресет A)</div><canvas id="refCanny" width="200" height="150"></canvas></div>
+  </div>
+  <div class="file-row">
+    <label class="file-btn btn-purple">
+      📂 Загрузить эталон
+      <input type="file" id="fileRef" accept="image/*" style="display:none" />
+    </label>
+  </div>
+</div>
+
+<!-- Photos -->
+<div class="card">
+  <h2>2. Фото рисунков <span id="photosBadge" class="badge badge-no">не загружены</span></h2>
+  <div class="file-row">
+    <label class="file-btn btn-purple">
+      📂 Загрузить фото (можно несколько)
+      <input type="file" id="filePhotos" accept="image/*" multiple style="display:none" />
+    </label>
+    <button class="file-btn btn-green" id="btnCompare" disabled>⚡ Сравнить</button>
+  </div>
+  <div id="photoResults" style="margin-top:16px;"></div>
+</div>
+
+<!-- Preset legend -->
+<div class="card">
+  <h2>Пресеты Canny</h2>
+  <table class="preset-table">
+    <thead>
+      <tr><th>Пресет</th><th>Blur</th><th>Canny low</th><th>Canny high</th><th>Dilate</th><th>Назначение</th></tr>
+    </thead>
+    <tbody id="presetLegend"></tbody>
+  </table>
+</div>
+
+<div id="log"></div>
+
+<script async src="https://docs.opencv.org/4.8.0/opencv.js"
+        onload="onOpenCvReady()"
+        onerror="onOpenCvError()"></script>
+
+<script>
+(function () {
+  'use strict';
+
+  var W = 256, H = 192;
+
+  // ── 5 Canny presets ───────────────────────────────────────────────────
+  var PRESETS = [
+    { name: 'A — Мягкий',        color: '#6366f1', blur: 3, low: 20,  high: 60,  dilate: 1,
+      desc: 'Слабые края. Лёгкий карандаш.' },
+    { name: 'B — Средний',       color: '#0ea5e9', blur: 5, low: 50,  high: 150, dilate: 2,
+      desc: 'Стандарт. Карандаш + ручка.' },
+    { name: 'C — Жёсткий',       color: '#f59e0b', blur: 5, low: 80,  high: 200, dilate: 2,
+      desc: 'Только чёткие линии. Убирает шум тетради.' },
+    { name: 'D — Очень жёсткий', color: '#ef4444', blur: 7, low: 120, high: 300, dilate: 3,
+      desc: 'Только самые тёмные линии. Плотная штриховка.' },
+    { name: 'E — Широкий',       color: '#10b981', blur: 5, low: 30,  high: 90,  dilate: 4,
+      desc: 'Широкое дилатирование. Соединяет разрывы.' },
+  ];
+
+  var cvReady   = false;
+  var refMat    = null;
+  var refEdges  = [];   // cv.Mat Canny-маска эталона для каждого пресета
+  var photoMats = [];
+  var hasRef    = false;
+
+  // ── Logging ─────────────────────────────────────────────────────────
+  var logEl = document.getElementById('log');
+  function log(msg) {
+    var d = document.createElement('div');
+    d.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
+    logEl.appendChild(d); logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  // ── OpenCV ───────────────────────────────────────────────────────────
+  window.onOpenCvReady = function () {
+    cvReady = true;
+    setStatus('✅ OpenCV.js готов. Загрузи эталон и фото.', 'ready');
+    log('OpenCV.js loaded.');
+    buildLegend();
+    updateButtons();
+  };
+  window.onOpenCvError = function () {
+    setStatus('❌ Не удалось загрузить OpenCV.js. Нужен интернет.', 'error');
+  };
+  function setStatus(msg, cls) {
+    var s = document.getElementById('status');
+    s.textContent = msg; s.className = cls || '';
+  }
+
+  // ── Legend ───────────────────────────────────────────────────────────
+  function buildLegend() {
+    var tbody = document.getElementById('presetLegend');
+    PRESETS.forEach(function (p) {
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td><span class="preset-tag" style="background:' + p.color + '">' + p.name + '</span></td>' +
+        '<td>' + p.blur + 'px</td><td>' + p.low + '</td><td>' + p.high + '</td>' +
+        '<td>' + p.dilate + 'px</td><td style="color:#94a3b8">' + p.desc + '</td>';
+      tbody.appendChild(tr);
+    });
+  }
+
+  // ── Buttons ──────────────────────────────────────────────────────────
+  document.getElementById('acceptThr').addEventListener('input', function () {
+    document.getElementById('valAccept').textContent = parseFloat(this.value).toFixed(3);
+  });
+  document.getElementById('btnRerun').addEventListener('click', function () {
+    if (cvReady && hasRef && photoMats.length) runComparison();
+  });
+  document.getElementById('btnCompare').addEventListener('click', function () {
+    if (cvReady && hasRef && photoMats.length) runComparison();
+  });
+  function updateButtons() {
+    var ok = cvReady && hasRef && photoMats.length > 0;
+    document.getElementById('btnRerun').disabled   = !ok;
+    document.getElementById('btnCompare').disabled = !ok;
+  }
+
+  // ── File → cv.Mat ────────────────────────────────────────────────────
+  function fileToMat(file, cb) {
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      var img = new Image();
+      img.onload = function () {
+        var c = document.createElement('canvas');
+        c.width = W; c.height = H;
+        var ctx = c.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0, W, H);
+        cb(cv.matFromImageData(ctx.getImageData(0, 0, W, H)));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // ── Canny pipeline (returns edges Mat — caller must delete) ───────────
+  function cannyEdges(srcMat, preset) {
+    var gray    = new cv.Mat();
+    var blurred = new cv.Mat();
+    var edges   = new cv.Mat();
+    var dilated = new cv.Mat();
+
+    cv.cvtColor(srcMat, gray, cv.COLOR_RGBA2GRAY);
+    var ks = preset.blur % 2 === 0 ? preset.blur + 1 : preset.blur;
+    cv.GaussianBlur(gray, blurred, new cv.Size(ks, ks), 0);
+    cv.Canny(blurred, edges, preset.low, preset.high);
+
+    var kernel = cv.Mat.ones(preset.dilate, preset.dilate, cv.CV_8U);
+    cv.dilate(edges, dilated, kernel);
+    kernel.delete();
+
+    gray.delete(); blurred.delete(); edges.delete();
+    return dilated; // CV_8UC1, 255 = edge pixel
+  }
+
+  // ── IoU score between two edge masks ─────────────────────────────────
+  // Score = |A ∩ B| / |A ∪ B|  (Jaccard index on edge pixels)
+  // Both mats must be CV_8UC1 same size.
+  function edgeIoU(matA, matB) {
+    var inter = new cv.Mat();
+    var union = new cv.Mat();
+    cv.bitwise_and(matA, matB, inter);
+    cv.bitwise_or(matA,  matB, union);
+
+    // Count non-zero pixels
+    var interCount = cv.countNonZero(inter);
+    var unionCount = cv.countNonZero(union);
+
+    inter.delete(); union.delete();
+    if (unionCount === 0) return 0;
+    return interCount / unionCount;
+  }
+
+  // ── Reference file input ──────────────────────────────────────────────
+  document.getElementById('fileRef').addEventListener('change', function () {
+    if (!this.files.length || !cvReady) return;
+    fileToMat(this.files[0], function (mat) {
+      if (refMat) refMat.delete();
+      refEdges.forEach(function (e) { if (e) e.delete(); });
+      refEdges = [];
+      refMat = mat;
+
+      // Show original
+      cv.imshow(document.getElementById('refOrig'), mat);
+
+      // Compute and show Canny for preset A
+      var e0 = cannyEdges(mat, PRESETS[0]);
+      cv.imshow(document.getElementById('refCanny'), e0);
+      e0.delete();
+
+      // Precompute edges for all presets
+      PRESETS.forEach(function (preset, pi) {
+        refEdges[pi] = cannyEdges(mat, preset);
+        var nz = cv.countNonZero(refEdges[pi]);
+        log('Ref preset ' + preset.name + ': edge px=' + nz);
+      });
+
+      hasRef = true;
+      var badge = document.getElementById('refBadge');
+      badge.textContent = 'загружен ✓'; badge.className = 'badge badge-ok';
+      updateButtons();
+    });
+  });
+
+  // ── Photo files input ─────────────────────────────────────────────────
+  document.getElementById('filePhotos').addEventListener('change', function () {
+    if (!this.files.length || !cvReady) return;
+    photoMats.forEach(function (p) { if (p && p.mat) p.mat.delete(); });
+    photoMats = [];
+    var files = Array.prototype.slice.call(this.files);
+    var loaded = 0;
+    files.forEach(function (file, idx) {
+      fileToMat(file, function (mat) {
+        photoMats[idx] = { name: file.name, mat: mat };
+        if (++loaded === files.length) {
+          log(loaded + ' photo(s) loaded.');
+          var badge = document.getElementById('photosBadge');
+          badge.textContent = loaded + ' фото'; badge.className = 'badge badge-ok';
+          updateButtons();
+          if (hasRef) runComparison();
+        }
+      });
+    });
+  });
+
+  // ── Main comparison ───────────────────────────────────────────────────
+  function runComparison() {
+    var acceptThr = parseFloat(document.getElementById('acceptThr').value);
+    var results   = document.getElementById('photoResults');
+    results.innerHTML = '';
+
+    photoMats.forEach(function (photo, photoIdx) {
+      if (!photo || !photo.mat) return;
+
+      // Build section and append to DOM immediately
+      var section = document.createElement('div');
+      section.className = 'photo-section';
+      section.innerHTML = '<h3>📷 ' + escHtml(photo.name) + '</h3>';
+      var row = document.createElement('div');
+      row.className = 'preset-row';
+      section.appendChild(row);
+      results.appendChild(section); // in DOM before cv.imshow
+
+      var scores = [];
+
+      PRESETS.forEach(function (preset, pi) {
+        var photoEdges = cannyEdges(photo.mat, preset);
+        var s = edgeIoU(refEdges[pi], photoEdges);
+        scores.push(s);
+
+        var colId = 'ph' + photoIdx + '_p' + pi;
+        var col   = document.createElement('div');
+        col.className = 'preset-col';
+        col.id = colId;
+        col.innerHTML =
+          '<div class="preset-name" style="color:' + preset.color + '">' + preset.name + '</div>' +
+          '<div class="preset-params">low=' + preset.low + ' hi=' + preset.high + ' d=' + preset.dilate + '</div>' +
+          '<canvas id="' + colId + '_c" width="' + W + '" height="' + H + '"></canvas>' +
+          '<div class="score-pill" id="' + colId + '_s">—</div>';
+
+        row.appendChild(col); // col is now in live DOM
+
+        cv.imshow(document.getElementById(colId + '_c'), photoEdges);
+        photoEdges.delete();
+
+        var pill = document.getElementById(colId + '_s');
+        var pct  = (s * 100).toFixed(1);
+        pill.textContent = pct + '%';
+        pill.className = s >= acceptThr ? 'score-pill high' : s >= acceptThr * 0.5 ? 'score-pill mid' : 'score-pill low';
+
+        log('Photo ' + (photoIdx+1) + ' ' + preset.name + ': IoU=' + s.toFixed(4));
+      });
+
+      // Mark best
+      var bestPi  = scores.indexOf(Math.max.apply(null, scores));
+      var bestCol = document.getElementById('ph' + photoIdx + '_p' + bestPi);
+      if (bestCol) {
+        bestCol.classList.add('best');
+        bestCol.querySelector('.preset-name').textContent += ' ⭐';
+      }
+      log('→ Best: ' + PRESETS[bestPi].name + ' IoU=' + scores[bestPi].toFixed(4) +
+          (scores[bestPi] >= acceptThr ? ' ✅ ACCEPTED' : ' ❌'));
+    });
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+}());
+</script>
+</body>
+</html>

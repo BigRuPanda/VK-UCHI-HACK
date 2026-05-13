@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>{{{ PRODUCT_NAME }}}</title>
+  <style>
+:root {
+  --gold: #f4b53f;
+  --gold-dark: #b76d18;
+  --purple: #2a1770;
+  --purple-deep: #12052d;
+  --cream: #fff5e5;
+  --shadow: rgba(0,0,0,.35);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #0f0626;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+#unity-container, #unity-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: #0f0626;
+}
+
+#loading-screen {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(12, 5, 30, .18), rgba(12, 5, 30, .36)),
+    url('book_bg.png') center center / cover no-repeat;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 4vw 6vh;
+}
+
+.loading-wrap {
+  width: min(760px, 86vw);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+}
+
+.loading-label {
+  color: var(--cream);
+  font-weight: 900;
+  font-size: clamp(20px, 2.7vw, 34px);
+  text-shadow: 0 3px 10px rgba(0,0,0,.4);
+  letter-spacing: .3px;
+}
+
+.loading-sub {
+  color: rgba(255,245,229,.9);
+  font-size: clamp(13px, 1.5vw, 17px);
+  text-shadow: 0 2px 8px rgba(0,0,0,.35);
+}
+
+.progress-outer {
+  width: 100%;
+  height: 34px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.16);
+  border: 2px solid rgba(255,255,255,.38);
+  box-shadow: 0 12px 30px rgba(0,0,0,.22), inset 0 0 18px rgba(255,255,255,.08);
+  overflow: hidden;
+  backdrop-filter: blur(4px);
+}
+
+#progress-fill {
+  width: 0%;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ffd86a 0%, #ffb13b 55%, #fff3aa 100%);
+  box-shadow: 0 0 18px rgba(255, 208, 88, .85);
+  transition: width .12s linear;
+}
+
+.progress-info {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  color: var(--cream);
+  font-weight: 800;
+  font-size: clamp(13px, 1.45vw, 16px);
+  text-shadow: 0 2px 8px rgba(0,0,0,.35);
+}
+
+#done-message {
+  display: none;
+  margin-top: 8px;
+  color: var(--cream);
+  font-size: clamp(14px, 1.7vw, 18px);
+  font-weight: 700;
+  text-shadow: 0 2px 8px rgba(0,0,0,.35);
+}
+
+.glow {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: rgba(255,213,96, .95);
+  border-radius: 50%;
+  box-shadow: 0 0 20px rgba(255,213,96, 1), 0 0 38px rgba(255,213,96, .6);
+  animation: bob 3.2s ease-in-out infinite;
+}
+.glow.a { top: 15%; left: 20%; animation-delay: 0s; }
+.glow.b { top: 21%; right: 18%; animation-delay: .8s; }
+.glow.c { bottom: 18%; left: 12%; animation-delay: 1.4s; }
+.glow.d { bottom: 25%; right: 12%; animation-delay: 2s; }
+
+@keyframes bob {
+  0%,100% { transform: translateY(0) scale(.75); opacity: .45; }
+  50% { transform: translateY(-16px) scale(1.15); opacity: 1; }
+}
+
+#unity-warning {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  z-index: 100;
+  max-width: 88vw;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #fff2a8;
+  color: #23114a;
+  font-weight: 700;
+  display: none;
+}
+</style>
+</head>
+<body>
+  <div id="unity-container">
+    <canvas id="unity-canvas" tabindex="-1"></canvas>
+  </div>
+
+  <div id="unity-warning"></div>
+
+  <div id="loading-screen">
+    <span class="glow a"></span>
+    <span class="glow b"></span>
+    <span class="glow c"></span>
+    <span class="glow d"></span>
+
+    <div class="loading-wrap">
+      <div class="loading-label">Открываем магическую книгу…</div>
+      <div class="loading-sub">Пожалуйста, подождите</div>
+
+      <div class="progress-outer">
+        <div id="progress-fill"></div>
+      </div>
+
+      <div class="progress-info">
+        <span id="progress-state">Загрузка</span>
+        <span id="progress-percent">0%</span>
+      </div>
+
+      <div id="done-message">Готово! Сейчас игра откроется.</div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.querySelector("#unity-canvas");
+    const loadingScreen = document.querySelector("#loading-screen");
+    const progressFill = document.querySelector("#progress-fill");
+    const progressPercent = document.querySelector("#progress-percent");
+    const progressState = document.querySelector("#progress-state");
+    const doneMessage = document.querySelector("#done-message");
+    const warningBanner = document.querySelector("#unity-warning");
+
+    function unityShowBanner(msg, type) {
+      warningBanner.innerHTML = msg;
+      warningBanner.style.display = "block";
+      if (type === "error") {
+        warningBanner.style.background = "#ff8a8a";
+      } else {
+        warningBanner.style.background = "#fff2a8";
+        setTimeout(() => warningBanner.style.display = "none", 5000);
+      }
+    }
+
+    function setProgress(progress) {
+      const value = Math.round(progress * 100);
+      progressFill.style.width = value + "%";
+      progressPercent.textContent = value + "%";
+      progressState.textContent = value < 100 ? "Загрузка" : "Готово";
+      if (value >= 100) {
+        doneMessage.style.display = "block";
+      }
+    }
+
+    const buildUrl = "Build";
+    const loaderUrl = buildUrl + "/{{{ LOADER_FILENAME }}}";
+    const config = {
+      arguments: [],
+      dataUrl: buildUrl + "/{{{ DATA_FILENAME }}}",
+      frameworkUrl: buildUrl + "/{{{ FRAMEWORK_FILENAME }}}",
+      codeUrl: buildUrl + "/{{{ CODE_FILENAME }}}",
+      streamingAssetsUrl: "StreamingAssets",
+      companyName: "{{{ COMPANY_NAME }}}",
+      productName: "{{{ PRODUCT_NAME }}}",
+      productVersion: "{{{ PRODUCT_VERSION }}}",
+      showBanner: unityShowBanner,
+    };
+
+    if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+      const meta = document.createElement("meta");
+      meta.name = "viewport";
+      meta.content = "width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes";
+      document.getElementsByTagName("head")[0].appendChild(meta);
+    }
+
+    const script = document.createElement("script");
+    script.src = loaderUrl;
+    script.onload = () => {
+      createUnityInstance(canvas, config, (progress) => {
+        setProgress(progress);
+      }).then((instance) => {
+        window.unityInstance = instance;
+        setProgress(1);
+        setTimeout(() => {
+          loadingScreen.style.display = "none";
+        }, 450);
+      }).catch((message) => {
+        alert(message);
+      });
+    };
+    document.body.appendChild(script);
+  </script>
+</body>
+</html>
